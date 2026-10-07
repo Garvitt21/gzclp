@@ -59,11 +59,19 @@ svg{width:100%;height:150px}
 .days div{cursor:pointer}
 .days div.today{border-color:var(--acc)}
 .days div.edit{background:var(--card2);box-shadow:0 0 0 1px var(--mut)}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;white-space:pre-line;z-index:20;box-shadow:0 8px 24px #0008;opacity:0;transform:translateY(8px);pointer-events:none;transition:.2s}
+#toast.show{opacity:1;transform:none}
+#modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:24px;z-index:30}
+#modal.show{display:flex}
+#modal .box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;max-width:360px;width:100%}
+#modal .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 </style>
 </head>
 <body>
 <header><h1>GZCLP</h1><div class="sub" id="sub"></div></header>
 <main id="main"></main>
+<div id="toast"></div>
+<div id="modal"><div class="box"><div id="modalMsg"></div><div class="btns"><button onclick="modalClose()">Cancel</button><button class="pri" id="modalOk" onclick="modalOk()">OK</button></div></div></div>
 <nav>
   <button data-v="today" class="on">Today</button>
   <button data-v="progress">Progress</button>
@@ -105,6 +113,18 @@ let S;
 try{ S = JSON.parse(localStorage.getItem(KEY)) || defaults(); }catch(e){ S = defaults(); }
 if(!S.sched) S.sched={...DEF_SCHED};
 S.unit='kg'; // weights are always in kg
+// ---------- In-page notices (no browser popups) ----------
+let toastTimer, modalFn=null;
+function toast(msg,ms=4000){
+  const t=el('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms);
+}
+function ask(msg,okLabel,fn){
+  el('modalMsg').textContent=msg; el('modalOk').textContent=okLabel; modalFn=fn;
+  el('modal').classList.add('show');
+}
+function modalClose(){ el('modal').classList.remove('show'); modalFn=null; render(); }
+function modalOk(){ const f=modalFn; el('modal').classList.remove('show'); modalFn=null; if(f) f(); }
 function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
 let view='today', progLift='squat', selWd=null; // selWd: weekday shown on Today tab (null = today)
 
@@ -162,9 +182,12 @@ function evalExercise(e){
   return e.done.every((x,i)=> x>=e.reps);
 }
 function finishWorkout(){
+  const missing = S.current.ex.some(e=>e.done.some(x=>x===null));
+  if(missing) ask('Some sets are not marked. Count them as failed and finish?','Finish',doFinish);
+  else doFinish();
+}
+function doFinish(){
   const w = S.current;
-  const missing = w.ex.filter(e=>e.done.some(x=>x===null));
-  if(missing.length && !confirm('Some sets are not marked. Count them as failed and finish?')) return;
   const changes=[];
   w.ex.forEach(e=>{
     const sets = e.done.map(x=>x===null?0:x);
@@ -193,11 +216,11 @@ function finishWorkout(){
   S.nextDay = (w.day+1)%4;
   S.current = null;
   save();
-  alert('Workout saved ✅\n\n'+(changes.join('\n')||'No changes'));
   render();
+  toast('Workout saved ✅\n'+(changes.join('\n')||'No changes'),7000);
 }
 function cancelWorkout(){
-  if(confirm('Discard this workout? Nothing will be saved.')){ S.current=null; save(); render(); }
+  ask('Discard this workout? Nothing will be saved.','Discard',()=>{ S.current=null; save(); render(); });
 }
 
 // ---------- Views ----------
@@ -220,7 +243,7 @@ function loggedCard(h,i){
     ${h.changes&&h.changes.length?'<div class="hint" style="margin-top:6px">'+h.changes.map(esc).join('<br>')+'</div>':''}
     <button class="bad" style="margin-top:10px;padding:6px 12px" onclick="delHistory(${i})">Delete</button></div>`;
 }
-function delHistory(i){ if(confirm('Delete this logged workout?')){ S.history.splice(i,1); save(); render(); } }
+function delHistory(i){ ask('Delete this logged workout?','Delete',()=>{ S.history.splice(i,1); save(); render(); }); }
 function vToday(){
   const now = new Date(), wd = now.getDay();
   const isTrain = S.sched[wd]!=null;
@@ -301,15 +324,16 @@ function vToday(){
   return h;
 }
 function setSched(wd,v){
-  const today = new Date().getDay();
-  // editing today's slot while a workout is open: swap it for the chosen day
-  if(wd===today && v!=='rest' && S.current && S.current.day!==+v){
-    const marked = S.current.ex.some(e=>e.done.some(x=>x!==null));
-    if(marked && !confirm('Switch to Day '+(+v+1)+'? Sets you marked in the current workout will be lost.')) return render();
-    S.current = buildWorkout(+v);
-  }
-  if(v==='rest') delete S.sched[wd]; else S.sched[wd]=+v;
-  save(); render();
+  const apply=()=>{
+    // editing today's slot while a workout is open: swap it for the chosen day
+    if(wd===new Date().getDay() && v!=='rest' && S.current && S.current.day!==+v) S.current = buildWorkout(+v);
+    if(v==='rest') delete S.sched[wd]; else S.sched[wd]=+v;
+    save(); render();
+  };
+  const swap = wd===new Date().getDay() && v!=='rest' && S.current && S.current.day!==+v;
+  if(swap && S.current.ex.some(e=>e.done.some(x=>x!==null)))
+    ask('Switch to Day '+(+v+1)+'? Sets you marked in the current workout will be lost.','Switch',apply);
+  else apply();
 }
 function startWorkout(d){
   if(d==null){ const wd=new Date().getDay(); d=S.nextDay; for(let k=0;k<7;k++){ const v=S.sched[(wd+k)%7]; if(v!=null){ d=v; break; } } }
