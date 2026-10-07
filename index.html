@@ -188,7 +188,7 @@ function evalExercise(e){
 function finishWorkout(){
   const w = S.current;
   const missing = w.ex.filter(e=>e.done.some(x=>x===null));
-  if(missing.length && !confirm('Kuch sets mark nahi kiye. Unko fail maan ke finish karein?')) return;
+  if(missing.length && !confirm('Some sets are not marked. Count them as failed and finish?')) return;
   const changes=[];
   w.ex.forEach(e=>{
     const sets = e.done.map(x=>x===null?0:x);
@@ -221,7 +221,7 @@ function finishWorkout(){
   render();
 }
 function cancelWorkout(){
-  if(confirm('Ye workout discard karein? Kuch save nahi hoga.')){ S.current=null; save(); render(); }
+  if(confirm('Discard this workout? Nothing will be saved.')){ S.current=null; save(); render(); }
 }
 
 // ---------- Views ----------
@@ -249,7 +249,7 @@ function vToday(){
 
   if(!S.current){
     const d = sd, day = DAYS[d];
-    h += `<div class="card"><div class="big">${isTrain?'Aaj training day hai':'Aaj rest day hai'}</div>
+    h += `<div class="card"><div class="big">${isTrain?'Today is a training day':'Today is a rest day'}</div>
       <div class="hint">Next: Day ${d+1} of 4</div>
       <div style="margin-top:10px">${['t1','t2','t3'].map((t,i)=>{
         const lf=day[t], L=S.lifts[lf];
@@ -258,14 +258,14 @@ function vToday(){
         return `<div class="row" style="margin:6px 0"><span><span class="tier">T${i+1}</span>${LIFTS[lf].name}</span><span class="hint">${sc.sets}×${sc.reps}${i!==1?'+':''} @ <b style="color:var(--acc)">${fmt(w)}${S.unit}</b></span></div>`;
       }).join('')}</div>
       <button class="pri full" style="margin-top:12px" onclick="startWorkout()">${isTrain?'Start Day '+(d+1):'Train anyway – Day '+(d+1)}</button>
-      <div class="row" style="margin-top:8px"><span class="hint">Doosra day chahiye?</span>
+      <div class="row" style="margin-top:8px"><span class="hint">Want a different day?</span>
         <span>${[0,1,2,3].map(i=>`<button style="padding:6px 10px;margin-left:4px" onclick="startWorkout(${i})">${i+1}</button>`).join('')}</span></div>
     </div>`;
     return h;
   }
 
   const w = S.current;
-  h += `<div class="sub" style="margin:4px 0">Day ${w.day+1} • T1/T2: dropdown se sets×reps aur result chuno • T3: tap set = done, dobara tap = reps kam, last set (+) pe tap = reps type karo</div>`;
+  h += `<div class="sub" style="margin:4px 0">Day ${w.day+1} • T1/T2: pick sets×reps and the result from the dropdowns • T3: tap a set = done, tap again = fewer reps, tap the last set (+) to type the reps</div>`;
   w.ex.forEach((e,ei)=>{
     const ok = evalExercise(e);
     h += `<div class="card">
@@ -310,7 +310,7 @@ function startWorkout(d){
 }
 
 function vHistory(){
-  if(!S.history.length) return '<div class="card hint">Abhi koi workout nahi. Pehla workout karo!</div>';
+  if(!S.history.length) return '<div class="card hint">No workouts yet. Do your first workout!</div>';
   return S.history.map((h,i)=>{
     const dt = new Date(h.date);
     return `<details class="card hist"><summary>${dt.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})} • Day ${h.day+1}</summary>
@@ -321,7 +321,7 @@ function vHistory(){
     </details>`;
   }).join('');
 }
-function delHistory(i){ if(confirm('Is entry ko delete karein?')){ S.history.splice(i,1); save(); render(); } }
+function delHistory(i){ if(confirm('Delete this entry?')){ S.history.splice(i,1); save(); render(); } }
 
 function vProgress(){
   const keys = Object.keys(LIFTS);
@@ -331,7 +331,7 @@ function vProgress(){
     if(e.lift===progLift && (e.tier==='T1'||e.tier==='T3'||e.tier==='T2')) pts.push({d:x.date,w:e.weight,t:e.tier});
   }));
   const main = pts.filter(p=>p.t===(progLift==='lat'||progLift==='row'?'T3':'T1'));
-  if(main.length<2) h += '<div class="card hint">Graph ke liye kam se kam 2 sessions chahiye.</div>';
+  if(main.length<2) h += '<div class="card hint">You need at least 2 sessions to show the graph.</div>';
   else {
     const W=320,H=150,p=14, ys=main.map(m=>m.w), mn=Math.min(...ys), mx=Math.max(...ys), rng=(mx-mn)||1;
     const X=i=>p+i*(W-2*p)/(main.length-1), Y=v=>H-p-(v-mn)/rng*(H-2*p);
@@ -363,7 +363,7 @@ function vSettings(){
   return `<div class="card"><div class="big">Starting weights (${S.unit})</div>
     <div class="cfg hint"><span></span><span style="text-align:right">T1</span><span style="text-align:right">T2</span></div>
     ${['squat','bench','ohp','deadlift','lat','row'].map(row).join('')}
-    <div class="hint">Stage = abhi kaunsi sets×reps chal rahi hai. T1 ≈ 5RM, T2 ≈ 65% of T1, T3 ≈ light (15 reps easy). Lat/Row ke liye sirf T3.</div></div>
+    <div class="hint">Stage = the sets×reps scheme you are currently on. T1 ≈ 5RM, T2 ≈ 65% of T1, T3 ≈ light (15 reps feel easy). Lat/Row only have T3.</div></div>
   <div class="card"><div class="big">Next workout</div>
     <div class="row" style="margin-top:8px">${[0,1,2,3].map(i=>`<button class="${S.nextDay===i?'pri':''}" onclick="S.nextDay=${i};save();render()">Day ${i+1}</button>`).join('')}</div></div>
   <div class="card"><div class="big">Unit</div>
@@ -371,9 +371,9 @@ function vSettings(){
   <div class="card"><div class="big">Backup</div>
     <div class="row" style="margin-top:8px"><button onclick="exportData()">Export</button><button onclick="importData()">Import</button><button class="bad" onclick="resetAll()">Reset</button></div></div>
   <div class="card hint"><b>Rules</b><br>
-    T1: 5×3+ → 6×2+ → 10×1+; success +5 (lower) / +2.5 (upper); 3 fails ke baad 85% reset.<br>
-    T2: 3×10 → 3×8 → 3×6; success +5/+2.5; last stage fail pe +7.5 aur 3×10.<br>
-    T3: 3×15+; last set 25+ reps pe +2.5.</div>`;
+    T1: 5×3+ → 6×2+ → 10×1+; success +5 (lower) / +2.5 (upper); after 3 failed stages, reset to 85%.<br>
+    T2: 3×10 → 3×8 → 3×6; success +5/+2.5; if the last stage fails, add 7.5 and restart at 3×10.<br>
+    T3: 3×15+; +2.5 when the last set reaches 25+ reps.</div>`;
 }
 function setW(k,f,v){ const n=parseFloat(v); if(isNaN(n)) return; S.lifts[k][f]=n; save(); render(); }
 function exportData(){
@@ -386,7 +386,7 @@ function importData(){
   i.onchange=()=>{ const f=i.files[0]; if(!f) return; f.text().then(t=>{ try{ const o=JSON.parse(t); if(!o.lifts) throw 0; S=o; save(); render(); }catch(e){ alert('Invalid file'); } }); };
   i.click();
 }
-function resetAll(){ if(confirm('Saara data delete ho jayega. Pakka?')){ S=defaults(); save(); render(); } }
+function resetAll(){ if(confirm('All data will be deleted. Are you sure?')){ S=defaults(); save(); render(); } }
 
 // ---------- Render ----------
 function render(){
