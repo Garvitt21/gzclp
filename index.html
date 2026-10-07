@@ -66,7 +66,6 @@ svg{width:100%;height:150px}
 <main id="main"></main>
 <nav>
   <button data-v="today" class="on">Today</button>
-  <button data-v="history">History</button>
   <button data-v="progress">Progress</button>
   <button data-v="settings">Settings</button>
 </nav>
@@ -251,10 +250,10 @@ function vToday(){
       ${e.tier==='T3' ? `<div class="row"><div class="scheme">${exLabel(e)} (25+ on last set to progress)</div>
         <div><button style="padding:4px 10px" onclick="adjustWeight(${ei},-2.5)">−</button>
         <button style="padding:4px 10px" onclick="adjustWeight(${ei},2.5)">+</button></div></div>
-      <div class="row" style="margin-top:6px"><span></span>
+      <div class="row" style="margin-top:6px;justify-content:center">
         <select style="width:auto;text-align:left" onchange="setResult(${ei},this.value)">${(()=>{
           const res = e.done.every(x=>x===null)?'pending':(evalExercise(e)?'amrap':(e.done.every(x=>x>=e.reps)?'done':'fail'));
-          return [['pending','Result: pending'],['done','All sets done ✓'],['amrap',`Last set ${T3.target}+ ✓ (add weight)`],['fail','Failed ✗']]
+          return `<option value="pending" hidden disabled ${res==='pending'?'selected':''}>Select result</option>`+[['done','All sets done ✓'],['amrap',`Last set ${T3.target}+ ✓ (add weight)`],['fail','Failed ✗']]
             .map(([v,t])=>`<option value="${v}" ${res===v?'selected':''}>${t}</option>`).join('');
         })()}</select></div>` : (()=>{
         const tbl = e.tier==='T1'?T1:T2;
@@ -264,7 +263,7 @@ function vToday(){
         return `<div class="row" style="margin-top:6px">
           <select style="width:auto;text-align:left" onchange="setScheme(${ei},this.value)">${tbl.map((t,i)=>`<option value="${i}" ${cur===i?'selected':''}>${t.sets}×${t.reps}${plus}</option>`).join('')}${cur<0?`<option selected>${e.sets}×${e.reps}${plus}</option>`:''}</select>
           <select style="width:auto;text-align:left" onchange="setResult(${ei},this.value)">
-            <option value="pending" ${res==='pending'?'selected':''}>Result: pending</option>
+            <option value="pending" hidden disabled ${res==='pending'?'selected':''}>Select result</option>
             <option value="done" ${res==='done'?'selected':''}>All sets done ✓</option>
             <option value="fail" ${res==='fail'?'selected':''}>Failed ✗</option></select>
           <span><button style="padding:4px 10px" onclick="adjustWeight(${ei},-2.5)">−</button>
@@ -286,46 +285,63 @@ function startWorkout(d){
   save(); render();
 }
 
-function vHistory(){
-  if(!S.history.length) return '<div class="card hint">No workouts yet. Do your first workout!</div>';
-  return S.history.map((h,i)=>{
-    const dt = new Date(h.date);
-    return `<details class="card hist"><summary>${dt.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})} • Day ${h.day+1}</summary>
-      ${h.ex.map(e=>`<div style="margin:8px 0"><span class="tier">${e.tier}</span><b>${LIFTS[e.lift].name}</b> ${fmt(e.weight)}${S.unit} ${e.success?'<span class="up">✓</span>':'<span class="dn">✗</span>'}
-        <div class="hint">${e.done.join(' / ')}</div></div>`).join('')}
-      ${h.changes&&h.changes.length?'<div class="hint" style="margin-top:6px">'+h.changes.map(esc).join('<br>')+'</div>':''}
-      <button class="bad" style="margin-top:10px;padding:6px 12px" onclick="delHistory(${i})">Delete</button>
-    </details>`;
-  }).join('');
+// ---------- Progress charts ----------
+const shortDate = t => new Date(t).toLocaleDateString(undefined,{day:'numeric',month:'short'});
+// Time-based line chart. pts: [{t, v, ok}], o: {lo, hi, ticks:[{v,label}], h, step, dots}
+function lineChart(pts,o){
+  const W=340, H=o.h||160, L=40, R=14, T=12, B=24;
+  const t0=pts[0].t, t1=pts[pts.length-1].t, span=(t1-t0)||1;
+  const X=t=>pts.length===1||t1===t0 ? (L+W-R)/2 : L+(t-t0)/span*(W-L-R);
+  const Y=v=>T+(1-(v-o.lo)/((o.hi-o.lo)||1))*(H-T-B);
+  let d='';
+  pts.forEach((p,i)=>{
+    if(o.step && i) d+=` L${X(p.t)},${Y(pts[i-1].v)}`;
+    d+=`${i?' L':'M'}${X(p.t)},${Y(p.v)}`;
+  });
+  const grid=o.ticks.map(k=>`<line x1="${L}" x2="${W-R}" y1="${Y(k.v)}" y2="${Y(k.v)}" style="stroke:var(--line)" stroke-width="1"/>
+    <text x="${L-6}" y="${Y(k.v)+4}" text-anchor="end" font-size="10" style="fill:var(--mut)">${k.label}</text>`).join('');
+  const dots=pts.map(p=>`<circle cx="${X(p.t)}" cy="${Y(p.v)}" r="4" style="fill:${p.ok===false?'var(--bad)':'var(--acc)'}"/>`).join('');
+  const xl = pts.length>1
+    ? `<text x="${L}" y="${H-6}" font-size="10" style="fill:var(--mut)">${shortDate(t0)}</text><text x="${W-R}" y="${H-6}" text-anchor="end" font-size="10" style="fill:var(--mut)">${shortDate(t1)}</text>`
+    : `<text x="${X(t0)}" y="${H-6}" text-anchor="middle" font-size="10" style="fill:var(--mut)">${shortDate(t0)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="height:${H}px">${grid}
+    <path d="${d}" fill="none" style="stroke:var(--acc)" stroke-width="2.5" stroke-linejoin="round"/>${dots}${xl}</svg>`;
 }
-function delHistory(i){ if(confirm('Delete this entry?')){ S.history.splice(i,1); save(); render(); } }
-
+function tierCard(lift,tier){
+  const tbl = tier==='T1'?T1:tier==='T2'?T2:null;
+  const pts=[];
+  [...S.history].reverse().forEach(x=>x.ex.forEach(e=>{
+    if(e.lift===lift && e.tier===tier) pts.push({t:+new Date(x.date), v:e.weight, ok:e.success, sets:e.sets, reps:e.reps});
+  }));
+  const title = `${tier} ${LIFTS[lift].name}`;
+  if(!pts.length) return `<div class="card"><div class="big">${title}</div><div class="hint" style="margin-top:6px">No sessions logged yet.</div></div>`;
+  const ys=pts.map(p=>p.v); let mn=Math.min(...ys), mx=Math.max(...ys);
+  if(mn===mx){ mn-=2.5; mx+=2.5; }
+  const mid=(mn+mx)/2, first=ys[0], last=ys[ys.length-1], diff=last-first;
+  let h=`<div class="card"><div class="row"><div class="big">${title}</div>
+    <div><span class="big up">${fmt(last)}${S.unit}</span> <span class="hint">${diff>=0?'+':''}${fmt(diff)} since start</span></div></div>
+    <div class="hint" style="margin-top:8px">Weight over time</div>
+    ${lineChart(pts,{lo:mn,hi:mx,ticks:[{v:mn,label:fmt(mn)},{v:mid,label:fmt(mid)},{v:mx,label:fmt(mx)}]})}`;
+  if(tbl){
+    const stage=p=>Math.max(0,tbl.findIndex(t=>t.sets===p.sets&&t.reps===p.reps));
+    const sp=pts.map(p=>({...p,v:stage(p)}));
+    h+=`<div class="hint" style="margin-top:8px">Sets × reps over time</div>
+    ${lineChart(sp,{lo:0,hi:tbl.length-1,h:110,step:true,ticks:tbl.map((t,i)=>({v:i,label:`${t.sets}×${t.reps}`}))})}`;
+  }
+  h+=`<div class="hint" style="margin-top:4px"><span class="up">●</span> progressed &nbsp; <span class="dn">●</span> failed &nbsp; • ${pts.length} session${pts.length>1?'s':''}</div></div>`;
+  return h;
+}
 function vProgress(){
   const keys = Object.keys(LIFTS);
   let h = `<div class="tabs">${keys.map(k=>`<button class="${k===progLift?'on':''}" onclick="progLift='${k}';render()">${LIFTS[k].name}</button>`).join('')}</div>`;
-  const pts=[];
-  [...S.history].reverse().forEach(x=>x.ex.forEach(e=>{
-    if(e.lift===progLift && (e.tier==='T1'||e.tier==='T3'||e.tier==='T2')) pts.push({d:x.date,w:e.weight,t:e.tier});
-  }));
-  const main = pts.filter(p=>p.t===(progLift==='lat'||progLift==='row'?'T3':'T1'));
-  if(main.length<2) h += '<div class="card hint">You need at least 2 sessions to show the graph.</div>';
-  else {
-    const W=320,H=150,p=14, ys=main.map(m=>m.w), mn=Math.min(...ys), mx=Math.max(...ys), rng=(mx-mn)||1;
-    const X=i=>p+i*(W-2*p)/(main.length-1), Y=v=>H-p-(v-mn)/rng*(H-2*p);
-    h += `<div class="card"><div class="hint">${LIFTS[progLift].name} – main working weight</div>
-      <svg viewBox="0 0 ${W} ${H}"><polyline fill="none" stroke="#4ade80" stroke-width="2.5" points="${main.map((m,i)=>X(i)+','+Y(m.w)).join(' ')}"/>
-      ${main.map((m,i)=>`<circle cx="${X(i)}" cy="${Y(m.w)}" r="3.5" fill="#4ade80"/>`).join('')}</svg>
-      <div class="row"><span class="hint">Start ${fmt(ys[0])}${S.unit}</span><span class="big up">${fmt(ys[ys.length-1])}${S.unit}</span></div></div>`;
-  }
   const L=S.lifts[progLift];
+  h += L.t1!=null ? tierCard(progLift,'T1')+tierCard(progLift,'T2') : tierCard(progLift,'T3');
   h += `<div class="card"><div class="hint">Current</div>
     ${L.t1!=null?`<div>T1: <b>${fmt(L.t1)}${S.unit}</b> ${T1[L.t1s].sets}×${T1[L.t1s].reps}+</div><div>T2: <b>${fmt(L.t2)}${S.unit}</b> ${T2[L.t2s].sets}×${T2[L.t2s].reps}</div>`:''}
-    ${L.t3!=null?`<div>T3: <b>${fmt(L.t3)}${S.unit}</b> 3×15+</div>`:''}</div>`;
-  const total = S.history.length;
-  h += `<div class="card"><span class="pill">${total} workouts</span></div>`;
+    ${L.t3!=null?`<div>T3: <b>${fmt(L.t3)}${S.unit}</b> 3×15+</div>`:''}
+    <div style="margin-top:8px"><span class="pill">${S.history.length} workouts</span></div></div>`;
   return h;
 }
-
 function vSettings(){
   const row=(k)=>{
     const L=S.lifts[k];
@@ -367,7 +383,7 @@ function resetAll(){ if(confirm('All data will be deleted. Are you sure?')){ S=d
 
 // ---------- Render ----------
 function render(){
-  const v = {today:vToday,history:vHistory,progress:vProgress,settings:vSettings}[view];
+  const v = {today:vToday,progress:vProgress,settings:vSettings}[view];
   el('main').innerHTML = v();
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
   el('sub').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
