@@ -67,7 +67,6 @@ svg{width:100%;height:150px}
 <nav>
   <button data-v="today" class="on">Today</button>
   <button data-v="progress">Progress</button>
-  <button data-v="settings">Settings</button>
 </nav>
 
 <script>
@@ -105,8 +104,9 @@ function defaults(){
 let S;
 try{ S = JSON.parse(localStorage.getItem(KEY)) || defaults(); }catch(e){ S = defaults(); }
 if(!S.sched) S.sched={...DEF_SCHED};
+S.unit='kg'; // weights are always in kg
 function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
-let view='today', progLift='squat', editWd=null;
+let view='today', progLift='squat', selWd=null; // selWd: weekday shown on Today tab (null = today)
 
 const r25 = x => Math.round(x/2.5)*2.5;
 const fmt = x => (Math.round(x*100)/100).toString();
@@ -203,41 +203,66 @@ function cancelWorkout(){
 // ---------- Views ----------
 function exLabel(e){ return `${e.sets}×${e.reps}${e.amrapLast?'+':''}`; }
 
+function dayPreview(d){
+  const day=DAYS[d];
+  return ['t1','t2','t3'].map((t,i)=>{
+    const lf=day[t], L=S.lifts[lf];
+    const w = i===0?L.t1:i===1?L.t2:L.t3;
+    const sc = i===0?T1[L.t1s]:i===1?T2[L.t2s]:T3;
+    return `<div class="row" style="margin:6px 0"><span><span class="tier">T${i+1}</span>${LIFTS[lf].name}</span><span class="hint">${sc.sets}×${sc.reps}${i!==1?'+':''} @ <b style="color:var(--acc)">${fmt(w)}${S.unit}</b></span></div>`;
+  }).join('');
+}
+function loggedCard(h,i){
+  return `<div class="card"><div class="row"><div class="big">Day ${h.day+1} · logged</div>
+    <span class="hint">${new Date(h.date).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}</span></div>
+    ${h.ex.map(e=>`<div class="row" style="margin:8px 0"><span><span class="tier">${e.tier}</span>${LIFTS[e.lift].name}</span>
+      <span class="hint">${e.sets}×${e.reps}${e.amrapLast?'+':''} @ <b style="color:var(--acc)">${fmt(e.weight)}${S.unit}</b> ${e.success?'<span class="up">✓</span>':'<span class="dn">✗</span>'}</span></div>`).join('')}
+    ${h.changes&&h.changes.length?'<div class="hint" style="margin-top:6px">'+h.changes.map(esc).join('<br>')+'</div>':''}
+    <button class="bad" style="margin-top:10px;padding:6px 12px" onclick="delHistory(${i})">Delete</button></div>`;
+}
+function delHistory(i){ if(confirm('Delete this logged workout?')){ S.history.splice(i,1); save(); render(); } }
 function vToday(){
   const now = new Date(), wd = now.getDay();
   const isTrain = S.sched[wd]!=null;
   // today's scheduled day, else the next scheduled day after today, else manual nextDay
   let sd = S.nextDay;
   for(let k=0;k<7;k++){ const v=S.sched[(wd+k)%7]; if(v!=null){ sd=v; break; } }
+  const sel = selWd==null ? wd : selWd;
+  // dates of the current week (Mon..Sun) and the workouts logged on them
+  const mon = new Date(now.getFullYear(),now.getMonth(),now.getDate()-((wd+6)%7));
+  const dateOf = d => new Date(mon.getFullYear(),mon.getMonth(),mon.getDate()+((d+6)%7));
+  const logsOn = d => S.history.map((x,i)=>({x,i})).filter(o=>new Date(o.x.date).toDateString()===dateOf(d).toDateString());
   let h='';
   h += '<div class="days">'+[1,2,3,4,5,6,0].map(d=>{
-    const t=S.sched[d]!=null;
-    return `<div class="${t?'tr':''} ${d===wd?'today':''} ${d===editWd?'edit':''}" onclick="editWd=editWd===${d}?null:${d};render()">${WD[d]}<br>${t?'💪 D'+(S.sched[d]+1):'rest'}</div>`;
+    const t=S.sched[d]!=null, lg=logsOn(d);
+    return `<div class="${t?'tr':''} ${d===wd?'today':''} ${d===sel?'edit':''}" onclick="selWd=${d};render()">${WD[d]}<br>${lg.length?'✓ D'+(lg[0].x.day+1):t?'💪 D'+(S.sched[d]+1):'rest'}</div>`;
   }).join('')+'</div>';
-  if(editWd!=null){
-    const cv=S.sched[editWd];
-    h += `<div class="card"><div class="row"><span>${WD[editWd]}</span>
-      <select style="width:auto;text-align:left" onchange="setSched(${editWd},this.value)">
-        <option value="rest" ${cv==null?'selected':''}>Rest day</option>
-        ${[0,1,2,3].map(i=>`<option value="${i}" ${cv===i?'selected':''}>Workout – Day ${i+1}</option>`).join('')}
-      </select></div></div>`;
+  const cv=S.sched[sel];
+  h += `<div class="card"><div class="row"><span>${WD[sel]}${sel===wd?' · today':''}</span>
+    <select style="width:auto;text-align:left" onchange="setSched(${sel},this.value)">
+      <option value="rest" ${cv==null?'selected':''}>Rest day</option>
+      ${[0,1,2,3].map(i=>`<option value="${i}" ${cv===i?'selected':''}>Workout – Day ${i+1}</option>`).join('')}
+    </select></div></div>`;
+
+  if(sel!==wd){
+    const lg=logsOn(sel);
+    if(lg.length) return h+lg.map(o=>loggedCard(o.x,o.i)).join('');
+    if(cv==null) return h+`<div class="card hint">Rest day – nothing logged.</div>`;
+    const past = dateOf(sel) < new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    return h+`<div class="card"><div class="big">Day ${cv+1}</div><div class="hint">${past?'No workout logged on this day.':'Planned workout'}</div>
+      <div style="margin-top:10px">${dayPreview(cv)}</div></div>`;
   }
 
   if(!S.current){
     const d = sd, day = DAYS[d];
     h += `<div class="card"><div class="big">${isTrain?'Today is a training day':'Today is a rest day'}</div>
       <div class="hint">Next: Day ${d+1} of 4</div>
-      <div style="margin-top:10px">${['t1','t2','t3'].map((t,i)=>{
-        const lf=day[t], L=S.lifts[lf];
-        const w = i===0?L.t1:i===1?L.t2:L.t3;
-        const sc = i===0?T1[L.t1s]:i===1?T2[L.t2s]:T3;
-        return `<div class="row" style="margin:6px 0"><span><span class="tier">T${i+1}</span>${LIFTS[lf].name}</span><span class="hint">${sc.sets}×${sc.reps}${i!==1?'+':''} @ <b style="color:var(--acc)">${fmt(w)}${S.unit}</b></span></div>`;
-      }).join('')}</div>
+      <div style="margin-top:10px">${dayPreview(d)}</div>
       <button class="pri full" style="margin-top:12px" onclick="startWorkout()">${isTrain?'Start Day '+(d+1):'Train anyway – Day '+(d+1)}</button>
       <div class="row" style="margin-top:8px"><span class="hint">Want a different day?</span>
         <span>${[0,1,2,3].map(i=>`<button style="padding:6px 10px;margin-left:4px" onclick="startWorkout(${i})">${i+1}</button>`).join('')}</span></div>
     </div>`;
-    return h;
+    return h+logsOn(wd).map(o=>loggedCard(o.x,o.i)).join('');
   }
 
   const w = S.current;
@@ -276,6 +301,13 @@ function vToday(){
   return h;
 }
 function setSched(wd,v){
+  const today = new Date().getDay();
+  // editing today's slot while a workout is open: swap it for the chosen day
+  if(wd===today && v!=='rest' && S.current && S.current.day!==+v){
+    const marked = S.current.ex.some(e=>e.done.some(x=>x!==null));
+    if(marked && !confirm('Switch to Day '+(+v+1)+'? Sets you marked in the current workout will be lost.')) return render();
+    S.current = buildWorkout(+v);
+  }
   if(v==='rest') delete S.sched[wd]; else S.sched[wd]=+v;
   save(); render();
 }
@@ -342,48 +374,9 @@ function vProgress(){
     <div style="margin-top:8px"><span class="pill">${S.history.length} workouts</span></div></div>`;
   return h;
 }
-function vSettings(){
-  const row=(k)=>{
-    const L=S.lifts[k];
-    if(L.t1!=null) return `<div class="cfg"><b>${LIFTS[k].name}</b>
-      <input type="number" step="2.5" value="${L.t1}" onchange="setW('${k}','t1',this.value)">
-      <input type="number" step="2.5" value="${L.t2}" onchange="setW('${k}','t2',this.value)"></div>
-      <div class="cfg"><span class="hint">stage</span>
-      <select onchange="setW('${k}','t1s',this.value)">${T1.map((t,i)=>`<option value="${i}" ${L.t1s===i?'selected':''}>${t.sets}x${t.reps}</option>`).join('')}</select>
-      <select onchange="setW('${k}','t2s',this.value)">${T2.map((t,i)=>`<option value="${i}" ${L.t2s===i?'selected':''}>${t.sets}x${t.reps}</option>`).join('')}</select></div>`;
-    return `<div class="cfg"><b>${LIFTS[k].name}</b><input type="number" step="2.5" value="${L.t3}" onchange="setW('${k}','t3',this.value)"><span></span></div>`;
-  };
-  return `<div class="card"><div class="big">Starting weights (${S.unit})</div>
-    <div class="cfg hint"><span></span><span style="text-align:right">T1</span><span style="text-align:right">T2</span></div>
-    ${['squat','bench','ohp','deadlift','lat','row'].map(row).join('')}
-    <div class="hint">Stage = the sets×reps scheme you are currently on. T1 ≈ 5RM, T2 ≈ 65% of T1, T3 ≈ light (15 reps feel easy). Lat/Row only have T3.</div></div>
-  <div class="card"><div class="big">Next workout</div>
-    <div class="row" style="margin-top:8px">${[0,1,2,3].map(i=>`<button class="${S.nextDay===i?'pri':''}" onclick="S.nextDay=${i};save();render()">Day ${i+1}</button>`).join('')}</div></div>
-  <div class="card"><div class="big">Unit</div>
-    <div class="row" style="margin-top:8px"><button class="${S.unit==='kg'?'pri':''}" onclick="S.unit='kg';save();render()">kg</button><button class="${S.unit==='lb'?'pri':''}" onclick="S.unit='lb';save();render()">lb</button></div></div>
-  <div class="card"><div class="big">Backup</div>
-    <div class="row" style="margin-top:8px"><button onclick="exportData()">Export</button><button onclick="importData()">Import</button><button class="bad" onclick="resetAll()">Reset</button></div></div>
-  <div class="card hint"><b>Rules</b><br>
-    T1: 5×3+ → 6×2+ → 10×1+; success +5 (lower) / +2.5 (upper); after 3 failed stages, reset to 85%.<br>
-    T2: 3×10 → 3×8 → 3×6; success +5/+2.5; if the last stage fails, add 7.5 and restart at 3×10.<br>
-    T3: 3×15+; +2.5 when the last set reaches 25+ reps.</div>`;
-}
-function setW(k,f,v){ const n=parseFloat(v); if(isNaN(n)) return; S.lifts[k][f]=n; save(); render(); }
-function exportData(){
-  const blob = new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='gzclp-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
-}
-function importData(){
-  const i=document.createElement('input'); i.type='file'; i.accept='application/json';
-  i.onchange=()=>{ const f=i.files[0]; if(!f) return; f.text().then(t=>{ try{ const o=JSON.parse(t); if(!o.lifts) throw 0; S=o; save(); render(); }catch(e){ alert('Invalid file'); } }); };
-  i.click();
-}
-function resetAll(){ if(confirm('All data will be deleted. Are you sure?')){ S=defaults(); save(); render(); } }
-
 // ---------- Render ----------
 function render(){
-  const v = {today:vToday,progress:vProgress,settings:vSettings}[view];
+  const v = {today:vToday,progress:vProgress}[view];
   el('main').innerHTML = v();
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
   el('sub').textContent = new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long'});
