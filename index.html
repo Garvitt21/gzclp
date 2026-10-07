@@ -197,7 +197,7 @@ function doFinish(){
     const L = S.lifts[e.lift], lower = LIFTS[e.lift].lower;
     const name = LIFTS[e.lift].name;
     if(e.tier==='T1'){ const k=T1.findIndex(t=>t.sets===e.sets&&t.reps===e.reps); if(k>=0) L.t1s=k; }
-    if(e.tier==='T2'){ const k=T2.findIndex(t=>t.sets===e.sets&&t.reps===e.reps); if(k>=0) L.t2s=k; }
+    if(e.tier==='T2'){ const k=T2.findIndex(t=>t.sets===e.sets&&t.reps===e.reps); if(k>=0) L.t2s=k; if(k===0) L.t2last10=e.weight; }
     if(e.tier==='T1'){
       // progress from the weight actually lifted
       if(ok){ const inc = 5; L.t1 = e.weight+inc; changes.push(`${name} T1 +${inc}${S.unit} → ${fmt(L.t1)}`); }
@@ -206,7 +206,7 @@ function doFinish(){
     } else if(e.tier==='T2'){
       if(ok){ const inc = 5; L.t2 = e.weight+inc; changes.push(`${name} T2 +${inc}${S.unit} → ${fmt(L.t2)}`); }
       else if(L.t2s<2){ L.t2 = e.weight; L.t2s++; changes.push(`${name} T2 fail → ${T2[L.t2s].sets}x${T2[L.t2s].reps}`); }
-      else { L.t2 = Math.max(0,r25(e.weight*0.85)); L.t2s=0; changes.push(`${name} T2 reset (85%) → 3x10 @ ${fmt(L.t2)}`); }
+      else { L.t2 = (L.t2last10!=null?L.t2last10:e.weight)+10; L.t2s=0; changes.push(`${name} T2 restart 3x10 @ ${fmt(L.t2)} (+10 over last 3x10)`); }
     } else {
       if(ok){ L.t3 = e.weight+2.5; changes.push(`${name} T3 +2.5${S.unit} → ${fmt(L.t3)}`); }
       else L.t3 = e.weight;
@@ -404,7 +404,7 @@ function vProgress(){
     <b>T2</b> 3×10 → 3×8 → 3×6<br>
     • All sets hit → add 5 kg, same scheme.<br>
     • Failed → same weight, move to the next scheme.<br>
-    • Failed 3×6 → back to 3×10 at 85% of that weight.<br><br>
+    • Failed 3×6 → back to 3×10 at 10 kg more than the last time you did 3×10.<br><br>
     <b>T3</b> 3×15+<br>
     • 25+ reps on the last set → add 2.5 kg.</div></details>`;
   return h;
