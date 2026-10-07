@@ -26,6 +26,11 @@ main{padding:8px 16px}
 .w{font-size:20px;font-weight:700;color:var(--acc)}
 .sets{display:flex;gap:8px;flex-wrap:wrap}
 .set{width:54px;height:54px;border-radius:50%;border:2px solid var(--line);background:var(--card2);color:var(--mut);font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center;user-select:none}
+.w input{width:90px;font-size:20px;font-weight:700;color:var(--acc)}
+.scheme input{width:56px;padding:6px;text-align:center;font-size:14px}
+input.set{padding:0;text-align:center;font-family:inherit;appearance:textfield;-moz-appearance:textfield}
+input.set::-webkit-outer-spin-button,input.set::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input.set::placeholder{color:var(--mut);opacity:1}
 .set.done{background:var(--acc);border-color:var(--acc);color:#05260f}
 .set.short{background:var(--warn);border-color:var(--warn);color:#2b1d00}
 .set.zero{background:var(--bad);border-color:var(--bad);color:#2b0000}
@@ -126,35 +131,15 @@ function buildWorkout(dayIdx){
 }
 
 // ---------- Tap handling ----------
-function tapSet(ei,si){
-  const e = S.current.ex[ei];
-  const isAmrap = e.amrapLast && si===e.sets-1;
-  if(isAmrap){
-    const cur = e.done[si];
-    const v = prompt(`${LIFTS[e.lift].name} – last set reps (min ${e.reps}+)`, cur==null?e.reps:cur);
-    if(v===null) return;
-    if(v.trim()==='') e.done[si]=null;
-    else { const n=parseInt(v,10); if(isNaN(n)||n<0) return; e.done[si]=n; }
-  } else {
-    const cur = e.done[si];
-    // undone -> full reps -> reps-1 ... -> 0 -> undone
-    if(cur===null) e.done[si]=e.reps;
-    else if(cur>0) e.done[si]=cur-1;
-    else e.done[si]=null;
-  }
-  save(); render();
-}
 function adjustWeight(ei,delta){
   const e = S.current.ex[ei];
   e.weight = Math.max(0, r25(e.weight+delta));
   save(); render();
 }
 
-function editWeight(ei){
-  const e=S.current.ex[ei];
-  const v=prompt('Weight ('+S.unit+')',e.weight); if(v===null) return;
-  const n=parseFloat(v); if(isNaN(n)||n<0) return;
-  e.weight=n; save(); render();
+function setWeight(ei,v){
+  const n=parseFloat(v); if(isNaN(n)||n<0) return render();
+  S.current.ex[ei].weight=n; save(); render();
 }
 function setScheme(ei,idx){
   const e=S.current.ex[ei], t=(e.tier==='T1'?T1:T2)[+idx];
@@ -165,16 +150,8 @@ function setResult(ei,v){
   const e=S.current.ex[ei];
   if(v==='pending') e.done=Array(e.sets).fill(null);
   else if(v==='done') e.done=Array(e.sets).fill(e.reps);
+  else if(v==='amrap'){ e.done=Array(e.sets).fill(e.reps); e.done[e.sets-1]=T3.target; }
   else { e.done=Array(e.sets).fill(e.reps); e.done[e.sets-1]=Math.max(0,e.reps-1); }
-  save(); render();
-}
-function editScheme(ei){
-  const e=S.current.ex[ei];
-  const v=prompt('Sets x Reps (e.g. 5x3)',e.sets+'x'+e.reps); if(v===null) return;
-  const m=v.toLowerCase().replace(/\s/g,'').match(/^(\d+)[x*×](\d+)\+?$/); if(!m) return alert('Format: 5x3');
-  const sets=Math.min(+m[1],15), reps=+m[2];
-  e.sets=sets; e.reps=reps;
-  e.done=Array.from({length:sets},(_,i)=>e.done[i]===undefined?null:e.done[i]);
   save(); render();
 }
 
@@ -265,21 +242,21 @@ function vToday(){
   }
 
   const w = S.current;
-  h += `<div class="sub" style="margin:4px 0">Day ${w.day+1} • T1/T2: pick sets×reps and the result from the dropdowns • T3: tap a set = done, tap again = fewer reps, tap the last set (+) to type the reps</div>`;
+  h += `<div class="sub" style="margin:4px 0">Day ${w.day+1} • Pick the result from the dropdown (T1/T2 also let you pick sets×reps) • T3: same, pick 'Last set 25+' to add weight</div>`;
   w.ex.forEach((e,ei)=>{
     const ok = evalExercise(e);
     h += `<div class="card">
       <div class="row"><div><span class="tier">${e.tier}</span><span class="ex">${LIFTS[e.lift].name}</span></div>
-        <div class="w" onclick="editWeight(${ei})" style="text-decoration:underline dotted">${fmt(e.weight)}<span class="hint"> ${S.unit}</span></div></div>
-      ${e.tier==='T3' ? `<div class="row"><div class="scheme" onclick="editScheme(${ei})" style="text-decoration:underline dotted">${exLabel(e)} ✎ (25+ on last set to progress)</div>
+        <div class="w"><input type="number" inputmode="decimal" step="2.5" min="0" value="${fmt(e.weight)}" onchange="setWeight(${ei},this.value)"><span class="hint"> ${S.unit}</span></div></div>
+      ${e.tier==='T3' ? `<div class="row"><div class="scheme">${exLabel(e)} (25+ on last set to progress)</div>
         <div><button style="padding:4px 10px" onclick="adjustWeight(${ei},-2.5)">−</button>
         <button style="padding:4px 10px" onclick="adjustWeight(${ei},2.5)">+</button></div></div>
-      <div class="sets">${e.done.map((v,si)=>{
-        const last = e.amrapLast && si===e.sets-1;
-        let cls='', txt = last?e.reps+'+':e.reps;
-        if(v!==null){ txt=v; cls = v===0?'zero':(v>=e.reps?'done':'short'); }
-        return `<div class="set ${cls}" onclick="tapSet(${ei},${si})">${txt}</div>`;
-      }).join('')}</div>` : (()=>{
+      <div class="row" style="margin-top:6px"><span></span>
+        <select style="width:auto;text-align:left" onchange="setResult(${ei},this.value)">${(()=>{
+          const res = e.done.every(x=>x===null)?'pending':(evalExercise(e)?'amrap':(e.done.every(x=>x>=e.reps)?'done':'fail'));
+          return [['pending','Result: pending'],['done','All sets done ✓'],['amrap',`Last set ${T3.target}+ ✓ (add weight)`],['fail','Failed ✗']]
+            .map(([v,t])=>`<option value="${v}" ${res===v?'selected':''}>${t}</option>`).join('');
+        })()}</select></div>` : (()=>{
         const tbl = e.tier==='T1'?T1:T2;
         const cur = tbl.findIndex(t=>t.sets===e.sets&&t.reps===e.reps);
         const res = e.done.every(x=>x===null)?'pending':(evalExercise(e)?'done':'fail');
