@@ -51,7 +51,9 @@ svg{width:100%;height:150px}
 .days{display:flex;gap:6px;margin:8px 0}
 .days div{flex:1;text-align:center;padding:8px 0;border-radius:10px;background:var(--card);border:1px solid var(--line);font-size:12px;color:var(--mut)}
 .days div.tr{color:var(--text)}
+.days div{cursor:pointer}
 .days div.today{border-color:var(--acc)}
+.days div.edit{background:var(--card2);box-shadow:0 0 0 1px var(--mut)}
 </style>
 </head>
 <body>
@@ -82,13 +84,13 @@ const T1 = [{sets:5,reps:3},{sets:6,reps:2},{sets:10,reps:1}];
 const T2 = [{sets:3,reps:10},{sets:3,reps:8},{sets:3,reps:6}];
 const T3 = {sets:3,reps:15,target:25};
 const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const TRAIN_WD = [1,2,5]; // Mon, Tue, Fri
+const DEF_SCHED = {1:0,2:1,5:2}; // weekday -> day index: Mon=Day1, Tue=Day2, Fri=Day3
 
 // ---------- State ----------
 const KEY='gzclp_v1';
 function defaults(){
   return {
-    unit:'kg', nextDay:0, current:null, history:[],
+    unit:'kg', nextDay:0, sched:{...DEF_SCHED}, current:null, history:[],
     lifts:{
       squat:{t1:60,t1s:0,t2:40,t2s:0}, bench:{t1:40,t1s:0,t2:30,t2s:0},
       ohp:{t1:25,t1s:0,t2:20,t2s:0}, deadlift:{t1:70,t1s:0,t2:50,t2s:0},
@@ -98,8 +100,9 @@ function defaults(){
 }
 let S;
 try{ S = JSON.parse(localStorage.getItem(KEY)) || defaults(); }catch(e){ S = defaults(); }
+if(!S.sched) S.sched={...DEF_SCHED};
 function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
-let view='today', progLift='squat';
+let view='today', progLift='squat', editWd=null;
 
 const r25 = x => Math.round(x/2.5)*2.5;
 const fmt = x => (Math.round(x*100)/100).toString();
@@ -226,14 +229,26 @@ function exLabel(e){ return `${e.sets}×${e.reps}${e.amrapLast?'+':''}`; }
 
 function vToday(){
   const now = new Date(), wd = now.getDay();
-  const isTrain = TRAIN_WD.includes(wd);
+  const isTrain = S.sched[wd]!=null;
+  // today's scheduled day, else the next scheduled day after today, else manual nextDay
+  let sd = S.nextDay;
+  for(let k=0;k<7;k++){ const v=S.sched[(wd+k)%7]; if(v!=null){ sd=v; break; } }
   let h='';
   h += '<div class="days">'+[1,2,3,4,5,6,0].map(d=>{
-    return `<div class="${TRAIN_WD.includes(d)?'tr':''} ${d===wd?'today':''}">${WD[d]}<br>${TRAIN_WD.includes(d)?'💪':'rest'}</div>`;
+    const t=S.sched[d]!=null;
+    return `<div class="${t?'tr':''} ${d===wd?'today':''} ${d===editWd?'edit':''}" onclick="editWd=editWd===${d}?null:${d};render()">${WD[d]}<br>${t?'💪 D'+(S.sched[d]+1):'rest'}</div>`;
   }).join('')+'</div>';
+  if(editWd!=null){
+    const cv=S.sched[editWd];
+    h += `<div class="card"><div class="row"><span>${WD[editWd]}</span>
+      <select style="width:auto;text-align:left" onchange="setSched(${editWd},this.value)">
+        <option value="rest" ${cv==null?'selected':''}>Rest day</option>
+        ${[0,1,2,3].map(i=>`<option value="${i}" ${cv===i?'selected':''}>Workout – Day ${i+1}</option>`).join('')}
+      </select></div></div>`;
+  }
 
   if(!S.current){
-    const d = S.nextDay, day = DAYS[d];
+    const d = sd, day = DAYS[d];
     h += `<div class="card"><div class="big">${isTrain?'Aaj training day hai':'Aaj rest day hai'}</div>
       <div class="hint">Next: Day ${d+1} of 4</div>
       <div style="margin-top:10px">${['t1','t2','t3'].map((t,i)=>{
@@ -284,8 +299,13 @@ function vToday(){
         <button class="bad full" style="margin-top:8px" onclick="cancelWorkout()">Discard</button>`;
   return h;
 }
+function setSched(wd,v){
+  if(v==='rest') delete S.sched[wd]; else S.sched[wd]=+v;
+  save(); render();
+}
 function startWorkout(d){
-  S.current = buildWorkout(d==null?S.nextDay:d);
+  if(d==null){ const wd=new Date().getDay(); d=S.nextDay; for(let k=0;k<7;k++){ const v=S.sched[(wd+k)%7]; if(v!=null){ d=v; break; } } }
+  S.current = buildWorkout(d);
   save(); render();
 }
 
