@@ -200,13 +200,13 @@ function doFinish(){
     if(e.tier==='T2'){ const k=T2.findIndex(t=>t.sets===e.sets&&t.reps===e.reps); if(k>=0) L.t2s=k; }
     if(e.tier==='T1'){
       // progress from the weight actually lifted
-      if(ok){ const inc = lower?5:2.5; L.t1 = e.weight+inc; changes.push(`${name} T1 +${inc}${S.unit} → ${fmt(L.t1)}`); }
+      if(ok){ const inc = 5; L.t1 = e.weight+inc; changes.push(`${name} T1 +${inc}${S.unit} → ${fmt(L.t1)}`); }
       else if(L.t1s<2){ L.t1 = e.weight; L.t1s++; changes.push(`${name} T1 fail → ${T1[L.t1s].sets}x${T1[L.t1s].reps}`); }
       else { L.t1 = Math.max(0,r25(e.weight*0.85)); L.t1s=0; changes.push(`${name} T1 reset (85%) → 5x3 @ ${fmt(L.t1)}`); }
     } else if(e.tier==='T2'){
-      if(ok){ const inc = lower?5:2.5; L.t2 = e.weight+inc; changes.push(`${name} T2 +${inc}${S.unit} → ${fmt(L.t2)}`); }
+      if(ok){ const inc = 5; L.t2 = e.weight+inc; changes.push(`${name} T2 +${inc}${S.unit} → ${fmt(L.t2)}`); }
       else if(L.t2s<2){ L.t2 = e.weight; L.t2s++; changes.push(`${name} T2 fail → ${T2[L.t2s].sets}x${T2[L.t2s].reps}`); }
-      else { L.t2 = e.weight+7.5; L.t2s=0; changes.push(`${name} T2 restart 3x10 @ ${fmt(L.t2)} (+7.5)`); }
+      else { L.t2 = Math.max(0,r25(e.weight*0.85)); L.t2s=0; changes.push(`${name} T2 reset (85%) → 3x10 @ ${fmt(L.t2)}`); }
     } else {
       if(ok){ L.t3 = e.weight+2.5; changes.push(`${name} T3 +2.5${S.unit} → ${fmt(L.t3)}`); }
       else L.t3 = e.weight;
@@ -395,7 +395,18 @@ function vProgress(){
   h += `<div class="card"><div class="hint">Current</div>
     ${L.t1!=null?`<div>T1: <b>${fmt(L.t1)}${S.unit}</b> ${T1[L.t1s].sets}×${T1[L.t1s].reps}+</div><div>T2: <b>${fmt(L.t2)}${S.unit}</b> ${T2[L.t2s].sets}×${T2[L.t2s].reps}</div>`:''}
     ${L.t3!=null?`<div>T3: <b>${fmt(L.t3)}${S.unit}</b> 3×15+</div>`:''}
-    <div style="margin-top:8px"><span class="pill">${S.history.length} workouts</span></div></div>`;
+    <div style="margin-top:8px"><span class="pill">${S.history.length} workouts</span></div></div>
+  <details class="card"><summary>How progression works</summary><div class="hint" style="margin-top:8px">
+    <b>T1</b> 5×3+ → 6×2+ → 10×1+<br>
+    • All sets hit → add 5 kg, same scheme.<br>
+    • Failed → same weight, move to the next scheme.<br>
+    • Failed 10×1+ → back to 5×3+ at 85% of that weight.<br><br>
+    <b>T2</b> 3×10 → 3×8 → 3×6<br>
+    • All sets hit → add 5 kg, same scheme.<br>
+    • Failed → same weight, move to the next scheme.<br>
+    • Failed 3×6 → back to 3×10 at 85% of that weight.<br><br>
+    <b>T3</b> 3×15+<br>
+    • 25+ reps on the last set → add 2.5 kg.</div></details>`;
   return h;
 }
 // ---------- Render ----------
